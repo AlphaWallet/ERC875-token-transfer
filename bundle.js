@@ -1366,7 +1366,7 @@ $(() => {
                 getTokensFromContract(contract, web3.eth.coinbase, (tokenObj) =>
                 {
                     gAllContractsTokens.indices.push(tokenObj.indices);
-                    gAllContractsTokens.tokens.push(tokenObj.balance);
+                    gAllContractsTokens.tokens.push(tokenObj.tokens);
                     spawnElementsWithTokens(tokenObj, contract.address);
                 });
             }
@@ -1381,7 +1381,7 @@ $(() => {
 
         for(let token of tokenObj.tokens)
         {
-            let tokenBundle = groupTokenByNumberOfOccurances(token, tokenObj);
+            let tokenBundle = groupTokenByNumberOfOccurrences(token, tokenObj);
             tokensForContract.tokens.push(tokenBundle);
             $('<label>', { id: 'tokenBundle', value: tokenBundle.token })
                 .appendTo('#' + contractAddress);
@@ -1389,25 +1389,25 @@ $(() => {
                 .appendTo('#' + contractAddress);
             $("<button>", { id: "transferToken" + tokenBundle.token, value:"transfer" })
                 .appendTo("#" + contractAddress);
-            for(let index of tokenBundle.tokens)
+            for(let i = 0; i < tokenBundle.amount; i++)
             {
                 //allow the user to choose how much of each unique token they want to transfer
-                $("<option>", { value: index }).appendTo("#selectTokenQuantity" + tokenBundle.token);
+                $("<option>", { value: i }).appendTo("#selectTokenQuantity" + tokenBundle.token);
             }
         }
     }
 
-    function groupTokenByNumberOfOccurances(token, tokens)
+    function groupTokenByNumberOfOccurrences(token, tokens)
     {
-        let numberOfOccurances = 0;
+        let numberOfOccurrences = 0;
         for(let i = 0; i < tokens.length; i++)
         {
             if(token == tokens[i])
             {
-                numberOfOccurances++;
+                numberOfOccurrences++;
             }
         }
-        return { token: token, amount: numberOfOccurances }
+        return { token: token, amount: numberOfOccurrences }
     }
 
     function getContractsOfUser(userAddress, cb)
@@ -1463,7 +1463,7 @@ $(() => {
                 }
             }
             tokenObject.indices = indices;
-            tokenObject.balance = data;
+            tokenObject.tokens = data;
             cb(tokenObject);
         });
     }
