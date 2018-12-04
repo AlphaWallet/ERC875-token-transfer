@@ -1,11 +1,15 @@
+//TODO
+//handle transfer logic with indices matching each token being used
+//ensure tokens are mapped to each contract and displayed like such on the UI
+//Fix grouping tokens together (Same token encoding bundled together)
+
 $(() => {
 
     let Web3 = require("web3");
-    let web3 = new Web3(new Web3.providers.HttpProvider('http://localhost:8545'));
-    let abi = require('./abi').abi;
+    let web3 = new Web3(new Web3.providers.HttpProvider("http://localhost:8545"));
+    let abi = require("./abi").abi;
     let etherscanTxApiRoute = "api?module=account&action=txlist&startblock=0&endblock=99999999&sort=asc&address=";
     let request = require("superagent");
-    const nullToken = "0x0000000000000000000000000000000000000000000000000000000000000000";
     let gAllContractsTokens = {};
     //array of tokens containing each token balance in a given contract
     gAllContractsTokens.tokens = [];
@@ -15,7 +19,7 @@ $(() => {
     gAllContractsTokens.contracts = [];
     //for each contract, there is an array of tokens and indices
 
-    if (typeof window.web3 !== 'undefined')
+    if (typeof window.web3 !== "undefined")
     {
         web3 = new Web3(window.web3.currentProvider);
         console.log("injected provider used");
@@ -26,7 +30,7 @@ $(() => {
         }
         catch(e)
         {
-            //do nothing, just don't halt the program
+            //do nothing, just don"t halt the program
             console.log("backward incompatible web3 with privacy mode + " + e);
         }
         init();
@@ -60,25 +64,30 @@ $(() => {
             }
             for(let contract of contracts)
             {
-                filter875Contracts(contract);
+                display875Contracts(contract);
             }
         });
     }
 
-    function filter875Contracts(contract)
+    function display875Contracts(contract)
     {
+        //first check if it is actually 875
         getIsERC875(contract, (err, is875) =>
         {
             if(err) return;
             //contract div
-            $('<div/>', { id: contract.address, class: '' }).appendTo('#contractObjects');
+            $("<div/>", { id: contract.address, class: "" }).appendTo("#contractObjects");
             if(is875)
             {
                 gAllContractsTokens.contracts.push(contract);
                 //appends the label for the contract address, this is the parent and each token goes under it
-                $('<div>', { id: contract.address, value: contract.address });
+                $("<div>", { id: contract.address, value: contract.address });
+                $("<label>").text(contract.address);
                 getTokensFromContract(contract, web3.eth.coinbase, (tokenObj) =>
                 {
+                    tokenObj.tokens = tokenObj.tokens.map((token) => {
+                        return "0x" + token.toString(16);
+                    });
                     gAllContractsTokens.indices.push(tokenObj.indices);
                     gAllContractsTokens.tokens.push(tokenObj.tokens);
                     spawnElementsWithTokens(tokenObj, contract.address);
@@ -89,26 +98,40 @@ $(() => {
 
     function spawnElementsWithTokens(tokenObj, contractAddress)
     {
-        let tokensForContract = {};
-        tokensForContract.address = contractAddress;
-        tokensForContract.tokens = [];
-
-        for(let token of tokenObj.tokens)
+        let contractParentId = "#" + contractAddress;
+        let tokensForContract = bundleTokens(contractAddress, tokenObj);
+        for(let tokenBundle of tokensForContract.tokens)
         {
-            let tokenBundle = groupTokenByNumberOfOccurrences(token, tokenObj);
-            tokensForContract.tokens.push(tokenBundle);
-            $('<label>', { id: 'tokenBundle', value: tokenBundle.token })
-                .appendTo('#' + contractAddress);
-            $('<select>', { id: "selectTokenQuantity" + tokenBundle.token})
-                .appendTo('#' + contractAddress);
-            $("<button>", { id: "transferToken" + tokenBundle.token, value:"transfer" })
-                .appendTo("#" + contractAddress);
+            $("<div>").className = ".tokenRow";
+            $("<label>", { id: "tokenBundle" }).appendTo(contractParentId).text(tokenBundle.token);
+            $("<select>", { id: "selectTokenQuantity" + tokenBundle.token }).appendTo(contractParentId).text("Quantity");
+            $("<button>", { id: "transferToken" + tokenBundle.token}).appendTo(contractParentId).text("Transfer");
+            console.log("Hdagshdhjsbdjhsjdhshdf " + tokenBundle.amount)
             for(let i = 0; i < tokenBundle.amount; i++)
             {
                 //allow the user to choose how much of each unique token they want to transfer
                 $("<option>", { value: i }).appendTo("#selectTokenQuantity" + tokenBundle.token);
             }
         }
+    }
+
+    function bundleTokens(contractAddress, tokenObj)
+    {
+        let tokensForContract = {};
+        tokensForContract.address = contractAddress;
+        tokensForContract.tokens = [];
+        for(let token of tokenObj.tokens)
+        {
+            let tokenBundle = groupTokenByNumberOfOccurrences(token, tokenObj.tokens);
+            tokensForContract.tokens.push(tokenBundle);
+        }
+        console.log("pre filter: " + JSON.stringify(tokensForContract.tokens));
+        //remove all duplicates
+        tokensForContract.tokens = tokensForContract.tokens.filter((elem, index, self) => {
+            return index == self.indexOf(elem);
+        });
+        console.log("post filter: " + JSON.stringify(tokensForContract.tokens));
+        return tokensForContract;
     }
 
     function groupTokenByNumberOfOccurrences(token, tokens)
@@ -145,7 +168,7 @@ $(() => {
         {
             if(tx.input != "")
             {
-                //make sure contract hasn't been added already
+                //make sure contract hasn"t been added already
                 for(let contract of contracts)
                 {
                     //if added then forget about it
@@ -164,20 +187,18 @@ $(() => {
     function getTokensFromContract(contract, addressOfUser, cb)
     {
         let tokenObject = {};
-        contract.balanceOf(addressOfUser, (err, data) =>
+        contract.balanceOf(addressOfUser, (err, arrayOfTokens) =>
         {
             if(err) cb(err);
             let indices = [];
-            for(let index in data)
+            for(let i = 0; i < arrayOfTokens.length; i++)
             {
-                indices.push(index);
-                if(data[index] == nullToken)
-                {
-                    data.remove(index);
-                }
+                indices.push(i);
             }
             tokenObject.indices = indices;
-            tokenObject.tokens = data;
+            tokenObject.tokens = arrayOfTokens.filter((e) => {
+                return e != 0; //remove all null tokens
+            });
             cb(tokenObject);
         });
     }
@@ -192,7 +213,8 @@ $(() => {
     }
 
     //maps to any transfer button call
-    $(":button").click(() => {
+    $(":button").click(() =>
+    {
         //TODO get the correct button by mapping to contract address
         //TODO get correct token input and amount from button click
         //instantiate contract and call transfer
