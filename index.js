@@ -60,32 +60,37 @@ $(() => {
             }
             for(let contract of contracts)
             {
-                getIsERC875(contract, (err, data) =>
+                filter875Contracts(contract);
+            }
+        });
+    }
+
+    function filter875Contracts(contract)
+    {
+        getIsERC875(contract, (err, is875) =>
+        {
+            if(err) return;
+            //contract div
+            $('<div/>', { id: contract.address, class: '' }).appendTo('#contractObjects');
+            if(is875)
+            {
+                gAllContractsTokens.contracts.push(contract);
+                //appends the label for the contract address, this is the parent and each token goes under it
+                $('<div>', { id: contract.address, value: contract.address });
+                getTokensFromContract(contract, web3.eth.coinbase, (tokenObj) =>
                 {
-                    if(err) return;
-                    //contract div
-                    $('<div/>', { id: contract.address, class: '' }).appendTo('#contractObjects');
-                    if(data == true)
-                    {
-                        gAllContractsTokens.contracts.push(contract);
-                        //appends the label for the contract address, this is the parent and each token goes under it
-                        $('<div>', { id: contract.address, value: contract.address });
-                        getTokensFromContract(contract, web3.eth.coinbase, (tokenObj) =>
-                        {
-                            gAllContractsTokens.indices.push(tokenObj.indices);
-                            gAllContractsTokens.tokens.push(tokenObj.balance);
-                            spawnElementsWithTokens(tokenObj);
-                        });
-                    }
+                    gAllContractsTokens.indices.push(tokenObj.indices);
+                    gAllContractsTokens.tokens.push(tokenObj.balance);
+                    spawnElementsWithTokens(tokenObj, contract.address);
                 });
             }
         });
     }
 
-    function spawnElementsWithTokens(tokenObj)
+    function spawnElementsWithTokens(tokenObj, contractAddress)
     {
         let tokensForContract = {};
-        tokensForContract.address = contract.address;
+        tokensForContract.address = contractAddress;
         tokensForContract.tokens = [];
 
         for(let token of tokenObj.tokens)
@@ -93,11 +98,11 @@ $(() => {
             let tokenBundle = groupTokenByNumberOfOccurances(token, tokenObj);
             tokensForContract.tokens.push(tokenBundle);
             $('<label>', { id: 'tokenBundle', value: tokenBundle.token })
-                .appendTo('#' + contract.address);
+                .appendTo('#' + contractAddress);
             $('<select>', { id: "selectTokenQuantity" + tokenBundle.token})
-                .appendTo('#' + contract.address);
+                .appendTo('#' + contractAddress);
             $("<button>", { id: "transferToken" + tokenBundle.token, value:"transfer" })
-                .appendTo("#" + contract.address);
+                .appendTo("#" + contractAddress);
             for(let index of tokenBundle.tokens)
             {
                 //allow the user to choose how much of each unique token they want to transfer
@@ -121,33 +126,39 @@ $(() => {
 
     function getContractsOfUser(userAddress, cb)
     {
-        let contracts = [];
         //get all the contracts from transaction list of user
         getEtherscanLink((link) => {
             request.get(link + etherscanTxApiRoute + userAddress, (err, data) =>
             {
                 if(err) throw err;
                 let transactions = data.body.result;
-                for (let tx of transactions)
-                {
-                    if(tx.input != "")
-                    {
-                        //make sure contract hasn't been added already
-                        for(let contract of contracts)
-                        {
-                            //if added then forget about it
-                            if(contract.address == tx.to)
-                            {
-                                break;
-                            }
-                        }
-                        //push instantiated web3 contract instance
-                        contracts.push(web3.eth.contract(abi).at(tx.to));
-                    }
-                }
+                let contracts = extractContractsFromEtherscan(transactions);
                 cb(contracts);
             });
         });
+    }
+
+    function extractContractsFromEtherscan(transactions)
+    {
+        let contracts = [];
+        for (let tx of transactions)
+        {
+            if(tx.input != "")
+            {
+                //make sure contract hasn't been added already
+                for(let contract of contracts)
+                {
+                    //if added then forget about it
+                    if(contract.address == tx.to)
+                    {
+                        break;
+                    }
+                }
+                //push instantiated web3 contract instance
+                contracts.push(web3.eth.contract(abi).at(tx.to));
+            }
+        }
+        return contracts;
     }
 
     function getTokensFromContract(contract, addressOfUser, cb)
@@ -175,8 +186,8 @@ $(() => {
     {
         contract.isStormBirdContract((err, data) =>
         {
-            if(err) cb(false);
-            else cb(data);
+            if(err) cb(err, false);
+            else cb(null, data);
         });
     }
 
