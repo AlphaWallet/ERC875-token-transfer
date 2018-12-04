@@ -3,9 +3,17 @@ $(() => {
     let Web3 = require("web3");
     let web3 = new Web3(new Web3.providers.HttpProvider('http://localhost:8545'));
     let abi = require('./abi').abi;
-    let shortAbi = require('./abi').shortABI;
-    let etherscanTxApi = "";
+    let etherscanTxApiRoute = "api?module=account&action=txlist&startblock=0&endblock=99999999&sort=asc&address=";
     let request = require("superagent");
+    const nullToken = "0x0000000000000000000000000000000000000000000000000000000000000000";
+    let gAllContractsTokens = {};
+    //array of tokens containing each token balance in a given contract
+    gAllContractsTokens.tokens = [];
+    //array of indices mapping to each token array
+    gAllContractsTokens.indices = [];
+    //the contract holding each token and indices
+    gAllContractsTokens.contracts = [];
+    //for each contract, there is an array of tokens and indices
 
     if (typeof window.web3 !== 'undefined')
     {
@@ -21,74 +29,167 @@ $(() => {
             //do nothing, just don't halt the program
             console.log("backward incompatible web3 with privacy mode + " + e);
         }
+        init();
     }
     else
     {
         alert("no injected provider found, using localhost:8545, please ensure your local node is running " +
             "and rpc and rpccorsdomain is enabled");
+        init();
     }
 
-    function redirectToEtherscan(address)
+    function getEtherscanLink(cb)
     {
-        web3.version.getNetwork((err, networkId) => {
-            if (networkId == 3) window.location.href = "https://ropsten.etherscan.io/address/" + address;
-            else if (networkId == 4) window.location.href = "https://rinkeby.etherscan.io/address/" + address;
-            else if (networkId == 42) window.location.href = "https://kovan.etherscan.io/address/" + address;
-            else window.location.href = "https://etherscan.io/address/" + address;
+        web3.version.getNetwork((err, networkId) =>
+        {
+            if (networkId == 3) cb("https://ropsten.etherscan.io/");
+            else if (networkId == 4) cb("https://rinkeby.etherscan.io/");
+            else if (networkId == 42) cb("https://kovan.etherscan.io/");
+            else cb("https://api.etherscan.io/");
         });
     }
 
-    $("#start").click(() => {
-       getContractsOfUser(web3.eth.coinbase, (contracts) => {
-           for(contract of contracts)
-           {
+    function init()
+    {
+        getContractsOfUser(web3.eth.coinbase, (contracts) =>
+        {
+            if(contracts.length == 0)
+            {
+                alert("No ERC875 tokens found");
+                return;
+            }
+            for(let contract of contracts)
+            {
+                getIsERC875(contract, (err, data) =>
+                {
+                    if(err) return;
+                    //contract div
+                    $('<div/>', { id: contract.address, class: '' }).appendTo('#contractObjects');
+                    if(data == true)
+                    {
+                        gAllContractsTokens.contracts.push(contract);
+                        //appends the label for the contract address, this is the parent and each token goes under it
+                        $('<div>', { id: contract.address, value: contract.address });
+                        getTokensFromContract(contract, web3.eth.coinbase, (tokenObj) =>
+                        {
+                            gAllContractsTokens.indices.push(tokenObj.indices);
+                            gAllContractsTokens.tokens.push(tokenObj.balance);
+                            spawnElementsWithTokens(tokenObj);
+                        });
+                    }
+                });
+            }
+        });
+    }
 
-           }
-       });
-    });
+    function spawnElementsWithTokens(tokenObj)
+    {
+        let tokensForContract = {};
+        tokensForContract.address = contract.address;
+        tokensForContract.tokens = [];
+
+        for(let token of tokenObj.tokens)
+        {
+            let tokenBundle = groupTokenByNumberOfOccurances(token, tokenObj);
+            tokensForContract.tokens.push(tokenBundle);
+            $('<label>', { id: 'tokenBundle', value: tokenBundle.token })
+                .appendTo('#' + contract.address);
+            $('<select>', { id: "selectTokenQuantity" + tokenBundle.token})
+                .appendTo('#' + contract.address);
+            $("<button>", { id: "transferToken" + tokenBundle.token, value:"transfer" })
+                .appendTo("#" + contract.address);
+            for(let index of tokenBundle.tokens)
+            {
+                //allow the user to choose how much of each unique token they want to transfer
+                $("<option>", { value: index }).appendTo("#selectTokenQuantity" + tokenBundle.token);
+            }
+        }
+    }
+
+    function groupTokenByNumberOfOccurances(token, tokens)
+    {
+        let numberOfOccurances = 0;
+        for(let i = 0; i < tokens.length; i++)
+        {
+            if(token == tokens[i])
+            {
+                numberOfOccurances++;
+            }
+        }
+        return { token: token, amount: numberOfOccurances }
+    }
 
     function getContractsOfUser(userAddress, cb)
     {
         let contracts = [];
         //get all the contracts from transaction list of user
-        request.get(etherscanTxApi + "/" + userAddress, (err, transactions) => {
-            if(err) throw err;
-            for (tx of transactions)
+        getEtherscanLink((link) => {
+            request.get(link + etherscanTxApiRoute + userAddress, (err, data) =>
             {
-                if(tx.input != "0x")
+                if(err) throw err;
+                let transactions = data.body.result;
+                for (let tx of transactions)
                 {
-                    for(contract of contracts)
+                    if(tx.input != "")
                     {
-                        if(contract.address == tx.address)
+                        //make sure contract hasn't been added already
+                        for(let contract of contracts)
                         {
-                            break;
+                            //if added then forget about it
+                            if(contract.address == tx.to)
+                            {
+                                break;
+                            }
                         }
+                        //push instantiated web3 contract instance
+                        contracts.push(web3.eth.contract(abi).at(tx.to));
                     }
-                    contracts.push(web3.eth.contract(shortAbi).at(tx.address));
                 }
-            }
-            cb(contracts);
+                cb(contracts);
+            });
         });
     }
 
     function getTokensFromContract(contract, addressOfUser, cb)
     {
-        contract.balanceOf(addressOfUser, (err, data) => {
-           cb(err, data);
+        let tokenObject = {};
+        contract.balanceOf(addressOfUser, (err, data) =>
+        {
+            if(err) cb(err);
+            let indices = [];
+            for(let index in data)
+            {
+                indices.push(index);
+                if(data[index] == nullToken)
+                {
+                    data.remove(index);
+                }
+            }
+            tokenObject.indices = indices;
+            tokenObject.balance = data;
+            cb(tokenObject);
         });
     }
 
     function getIsERC875(contract, cb)
     {
-        contract.isStormbird((err, data) => {
+        contract.isStormBirdContract((err, data) =>
+        {
             if(err) cb(false);
             else cb(data);
-        })
+        });
     }
 
-    function transfer(contract, to, tokens)
+    //maps to any transfer button call
+    $(":button").click(() => {
+        //TODO get the correct button by mapping to contract address
+        //TODO get correct token input and amount from button click
+        //instantiate contract and call transfer
+    });
+
+    function transfer(contract, to, tokenIndices)
     {
-        contract.transfer(to, tokens, (err, data) =>
+        contract.transfer(to, tokenIndices, (err, data) =>
         {
             alert(err, data);
         });

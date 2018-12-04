@@ -4,13 +4,14 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "build": "browserify index.js > bundle.js",
+    "build": "watchify ./index.js -o ./bundle.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "dependencies": {
+    "superagent": "^4.0.0",
     "web3": "^0.19.0"
   }
 }
