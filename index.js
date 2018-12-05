@@ -57,6 +57,7 @@ $(() => {
     {
         getContractsOfUser(web3.eth.coinbase, (contracts) =>
         {
+            console.log("All contracts: " + contracts.length)
             if(contracts.length == 0)
             {
                 alert("No ERC875 tokens found");
@@ -64,6 +65,7 @@ $(() => {
             }
             for(let contract of contracts)
             {
+                console.log("Contract added: " + contract.address);
                 display875Contracts(contract);
             }
         });
@@ -76,12 +78,11 @@ $(() => {
         {
             if(err) return;
             //contract div
-            $("<div/>", { id: contract.address, class: "" }).appendTo("#contractObjects");
             if(is875)
             {
                 gAllContractsTokens.contracts.push(contract);
                 //appends the label for the contract address, this is the parent and each token goes under it
-                $("<div>", { id: contract.address, value: contract.address });
+                $("<div>", { id: contract.address, value: contract.address }).appendTo("#contractObjects");
                 $("<label>").text(contract.address);
                 getTokensFromContract(contract, web3.eth.coinbase, (tokenObj) =>
                 {
@@ -106,11 +107,13 @@ $(() => {
             $("<label>", { id: "tokenBundle" }).appendTo(contractParentId).text(tokenBundle.token);
             $("<select>", { id: "selectTokenQuantity" + tokenBundle.token }).appendTo(contractParentId).text("Quantity");
             $("<button>", { id: "transferToken" + tokenBundle.token}).appendTo(contractParentId).text("Transfer");
-            console.log("Hdagshdhjsbdjhsjdhshdf " + tokenBundle.amount)
             for(let i = 0; i < tokenBundle.amount; i++)
             {
+                console.log("here is the contract address: " + contractAddress);
                 //allow the user to choose how much of each unique token they want to transfer
-                $("<option>", { value: i }).appendTo("#selectTokenQuantity" + tokenBundle.token);
+                $("<option>", { value: i, id: contractAddress }).appendTo(
+                    "#selectTokenQuantity" + tokenBundle.token
+                ).text(i);
             }
         }
     }
@@ -125,12 +128,9 @@ $(() => {
             let tokenBundle = groupTokenByNumberOfOccurrences(token, tokenObj.tokens);
             tokensForContract.tokens.push(tokenBundle);
         }
-        console.log("pre filter: " + JSON.stringify(tokensForContract.tokens));
         //remove all duplicates
-        tokensForContract.tokens = tokensForContract.tokens.filter((elem, index, self) => {
-            return index == self.indexOf(elem);
-        });
-        console.log("post filter: " + JSON.stringify(tokensForContract.tokens));
+        tokensForContract.tokens = tokensForContract.tokens.filter((thing, index, self) =>
+        self.findIndex(t => t.place === thing.place && t.name === thing.name) === index);
         return tokensForContract;
     }
 
@@ -163,25 +163,24 @@ $(() => {
 
     function extractContractsFromEtherscan(transactions)
     {
-        let contracts = [];
+        let contractAddresses = [];
+        let contractObjects = [];
         for (let tx of transactions)
         {
             if(tx.input != "")
             {
-                //make sure contract hasn"t been added already
-                for(let contract of contracts)
-                {
-                    //if added then forget about it
-                    if(contract.address == tx.to)
-                    {
-                        break;
-                    }
-                }
                 //push instantiated web3 contract instance
-                contracts.push(web3.eth.contract(abi).at(tx.to));
+                if(!contractAddresses.includes(tx.to))
+                {
+                    contractAddresses.push(tx.to);
+                }
             }
         }
-        return contracts;
+        for(let address of contractAddresses)
+        {
+            contractObjects.push(web3.eth.contract(abi).at(address));
+        }
+        return contractObjects;
     }
 
     function getTokensFromContract(contract, addressOfUser, cb)
