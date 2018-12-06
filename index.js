@@ -1,23 +1,15 @@
-//TODO
-//handle transfer logic with indices matching each token being used
-//ensure tokens are mapped to each contract and displayed like such on the UI
-//Fix grouping tokens together (Same token encoding bundled together)
+let Web3 = require("web3");
+let web3 = new Web3(new Web3.providers.HttpProvider("http://localhost:8545"));
+let abi = require("./abi").abi;
+let etherscanTxApiRoute = "api?module=account&action=txlist&startblock=0&endblock=99999999&sort=asc&address=";
+let request = require("superagent");
 
-$(() => {
+$(() =>
+{
 
-    let Web3 = require("web3");
-    let web3 = new Web3(new Web3.providers.HttpProvider("http://localhost:8545"));
-    let abi = require("./abi").abi;
-    let etherscanTxApiRoute = "api?module=account&action=txlist&startblock=0&endblock=99999999&sort=asc&address=";
-    let request = require("superagent");
     let gAllContractsTokens = {};
-    //array of tokens containing each token balance in a given contract
-    gAllContractsTokens.tokens = [];
-    //array of indices mapping to each token array
-    gAllContractsTokens.indices = [];
-    //the contract holding each token and indices
-    gAllContractsTokens.contracts = [];
     //for each contract, there is an array of tokens and indices
+    gAllContractsTokens.contracts = [];
 
     if (typeof window.web3 !== "undefined")
     {
@@ -33,6 +25,7 @@ $(() => {
             //do nothing, just don"t halt the program
             console.log("backward incompatible web3 with privacy mode + " + e);
         }
+        $("#warning").text("Loading your contracts!");
         init();
     }
     else
@@ -57,7 +50,6 @@ $(() => {
     {
         getContractsOfUser(web3.eth.coinbase, (contracts) =>
         {
-            console.log("All contracts: " + contracts.length)
             if(contracts.length == 0)
             {
                 alert("No ERC875 tokens found");
@@ -65,7 +57,6 @@ $(() => {
             }
             for(let contract of contracts)
             {
-                console.log("Contract added: " + contract.address);
                 display875Contracts(contract);
             }
         });
@@ -81,20 +72,28 @@ $(() => {
             if(is875)
             {
                 gAllContractsTokens.contracts.push(contract);
-                //appends the label for the contract address, this is the parent and each token goes under it
-                $("<div>", { id: contract.address, value: contract.address }).appendTo("#contractObjects");
-                $("<label>").text(contract.address);
                 getTokensFromContract(contract, web3.eth.coinbase, (tokenObj) =>
                 {
-                    tokenObj.tokens = tokenObj.tokens.map((token) => {
-                        return "0x" + token.toString(16);
-                    });
-                    gAllContractsTokens.indices.push(tokenObj.indices);
-                    gAllContractsTokens.tokens.push(tokenObj.tokens);
-                    spawnElementsWithTokens(tokenObj, contract.address);
+                    if(tokenObj.tokens.length > 0)
+                    {
+                        createContractDiv(contract.address);
+                        tokenObj.tokens = tokenObj.tokens.map((token) => {
+                            return "0x" + token.toString(16);
+                        });
+                        spawnElementsWithTokens(tokenObj, contract.address);
+                    }
                 });
             }
         });
+    }
+
+    function createContractDiv(contractAddress)
+    {
+        $("<br>");
+        $("<div>", { id: contractAddress }).appendTo("#contractObjects");
+        $("<h5>").appendTo("#" + contractAddress).text("Contract: " + contractAddress);
+        $("<h5>").appendTo("#" + contractAddress).text("Tokens of this contract");
+        $("<br>");
     }
 
     function spawnElementsWithTokens(tokenObj, contractAddress)
@@ -103,19 +102,23 @@ $(() => {
         let tokensForContract = bundleTokens(contractAddress, tokenObj);
         for(let tokenBundle of tokensForContract.tokens)
         {
-            $("<div>").className = ".tokenRow";
             $("<label>", { id: "tokenBundle" }).appendTo(contractParentId).text(tokenBundle.token);
-            $("<select>", { id: "selectTokenQuantity" + tokenBundle.token }).appendTo(contractParentId).text("Quantity");
-            $("<button>", { id: "transferToken" + tokenBundle.token}).appendTo(contractParentId).text("Transfer");
-            for(let i = 0; i < tokenBundle.amount; i++)
+            $("<label>").appendTo(contractParentId).text(" ");
+            $("<br>");
+            $("<select>", { id: "select" + contractAddress }).appendTo(contractParentId);
+            $("<input>", {id: "to" + contractAddress, placeholder: "Send to" }).appendTo(contractParentId);
+            $("<button>", { id:"button" + contractAddress, type: "button" }).appendTo(contractParentId).text("Transfer");
+
+            for(let i = 1; i < tokenBundle.amount; i++)
             {
-                console.log("here is the contract address: " + contractAddress);
                 //allow the user to choose how much of each unique token they want to transfer
                 $("<option>", { value: i, id: contractAddress }).appendTo(
-                    "#selectTokenQuantity" + tokenBundle.token
+                    "#select" + contractAddress
                 ).text(i);
             }
         }
+        //TODO clean up
+        initButtonClickHandler();
     }
 
     function bundleTokens(contractAddress, tokenObj)
@@ -186,18 +189,27 @@ $(() => {
     function getTokensFromContract(contract, addressOfUser, cb)
     {
         let tokenObject = {};
+        tokenObject.tokens = [];
         contract.balanceOf(addressOfUser, (err, arrayOfTokens) =>
         {
-            if(err) cb(err);
+            if(err)
+            {
+                cb(err);
+                return;
+            }
             let indices = [];
+            let indicesWithTokens = [];
             for(let i = 0; i < arrayOfTokens.length; i++)
             {
                 indices.push(i);
+                if(arrayOfTokens[i] != 0)
+                {
+                    tokenObject.tokens.push(arrayOfTokens[i]);
+                    indicesWithTokens.push(i);
+                }
             }
             tokenObject.indices = indices;
-            tokenObject.tokens = arrayOfTokens.filter((e) => {
-                return e != 0; //remove all null tokens
-            });
+            tokenObject.indicesWithTokens = indicesWithTokens;
             cb(tokenObject);
         });
     }
@@ -211,19 +223,72 @@ $(() => {
         });
     }
 
-    //maps to any transfer button call
-    $(":button").click(() =>
+    function getContractFromClick(targetElement)
     {
-        //TODO get the correct button by mapping to contract address
-        //TODO get correct token input and amount from button click
-        //instantiate contract and call transfer
-    });
+        for (let contract of gAllContractsTokens.contracts)
+        {
+            if(targetElement.includes(contract.address))
+            {
+                return contract;
+            }
+        }
+    }
+
+    //TODO refactor this code
+    function initButtonClickHandler()
+    {
+        $("#warning").text("Loaded your ERC875 contracts");
+        //maps to any transfer button call
+        $(":button").click((e) =>
+        {
+            let targetElement = e.target.id;
+            if(targetElement.includes("0x"))
+            {
+                let contractToExecute = getContractFromClick(targetElement);
+                let quantity = $("#select" + contractToExecute.address).val();
+                let to = $("#to" + contractToExecute.address).val();
+                getIndicesFromContractBalance(web3.eth.coinbase, contractToExecute, quantity, (result) =>
+                {
+                    if (result !== false)
+                    {
+                        console.log("Result: " + result)
+                        transfer(contractToExecute, to, result);
+                    }
+                    else
+                    {
+                        console.log("adfdsfgds: " + result)
+                        $("#warning").text("Failed to make transfer");
+                    }
+                });
+            }
+        });
+    }
+
+    function getIndicesFromContractBalance(userAddress, contract, quantity, cb)
+    {
+        getTokensFromContract(contract, userAddress, (data) =>
+        {
+            let indicesWithTokens = data.indicesWithTokens;
+            if(indicesWithTokens.length < quantity)
+            {
+                cb(false);
+                return;
+            }
+            let indices = [];
+            for(let i = 0; i < quantity; i++)
+            {
+                indices.push(indicesWithTokens[i]);
+            }
+            cb(indices);
+        });
+    }
 
     function transfer(contract, to, tokenIndices)
     {
         contract.transfer(to, tokenIndices, (err, data) =>
         {
-            alert(err, data);
+            if(err) $("#warning").text(err);
+            else $("#warning").text(data);
         });
     }
 

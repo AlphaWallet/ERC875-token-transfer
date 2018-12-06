@@ -5,9 +5,8 @@ body {
   padding: 3rem 1.5rem;
 }
 
-/* TODO style each token row*/
-.tokenRow {
-
+#warning {
+    color: #2a9308;
 }
 
 h2,

@@ -959,7 +959,7 @@ let shortAbi = [
                 "type": "address"
             },
             {
-                "name": "ticketIndices",
+                "name": "indices",
                 "type": "uint256[]"
             }
         ],
